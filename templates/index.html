@@ -1,0 +1,175 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>ESP32 Sensor Dashboard</title>
+
+  <!-- Load Chart.js from CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      background: #f8f9fa;
+    }
+
+    h2 {
+      color: #333;
+      margin-bottom: 10px;
+    }
+
+    #controls {
+      margin-bottom: 15px;
+    }
+
+    button {
+      background-color: #007BFF;
+      border: none;
+      color: white;
+      padding: 8px 12px;
+      margin-right: 10px;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background-color: #0056b3;
+    }
+
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin-top: 15px;
+    }
+
+    th, td {
+      border: 1px solid #ddd;
+      padding: 8px;
+      text-align: left;
+    }
+
+    th {
+      background-color: #007BFF;
+      color: white;
+    }
+  </style>
+</head>
+<body>
+  <h2>🌡️ ESP32 Sensor Dashboard</h2>
+
+  <div id="controls">
+    <button onclick="download('csv')">Download CSV</button>
+    <button onclick="download('xlsx')">Download XLSX</button>
+
+    <label style="margin-left:20px;">Auto refresh:
+      <select id="intervalSelect" onchange="changeInterval()">
+        <option value="5000">5s</option>
+        <option value="10000">10s</option>
+        <option value="30000" selected>30s</option>
+      </select>
+    </label>
+  </div>
+
+  <canvas id="chart" width="800" height="300"></canvas>
+
+  <h3>Recent Readings</h3>
+  <table id="table">
+    <thead>
+      <tr><th>Timestamp</th><th>Temperature (°C)</th><th>Humidity (%)</th></tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <script>
+    const API_ALL = '/api/all?max=100';
+    let chart;
+    let refreshInterval = 30000;
+    let timer;
+
+    function initChart(labels, tdata, hdata) {
+      const ctx = document.getElementById('chart').getContext('2d');
+      if (chart) chart.destroy();
+      chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [
+            {
+              label: 'Temperature (°C)',
+              data: tdata,
+              borderColor: 'red',
+              fill: false,
+              tension: 0.3,
+              yAxisID: 'y'
+            },
+            {
+              label: 'Humidity (%)',
+              data: hdata,
+              borderColor: 'blue',
+              fill: false,
+              tension: 0.3,
+              yAxisID: 'y1'
+            }
+          ]
+        },
+        options: {
+          scales: {
+            y: {
+              type: 'linear',
+              position: 'left',
+              title: { display: true, text: 'Temperature (°C)' }
+            },
+            y1: {
+              type: 'linear',
+              position: 'right',
+              grid: { drawOnChartArea: false },
+              title: { display: true, text: 'Humidity (%)' }
+            }
+          }
+        }
+      });
+    }
+
+    async function fetchAndRender() {
+      try {
+        const res = await fetch(API_ALL);
+        const json = await res.json();
+        if (json.status !== 'ok') return;
+        const data = json.data;
+        const labels = data.map(d => d.timestamp);
+        const tdata = data.map(d => d.temperature);
+        const hdata = data.map(d => d.humidity);
+        initChart(labels, tdata, hdata);
+        renderTable(data.reverse());
+      } catch (e) {
+        console.error('Error fetching data:', e);
+      }
+    }
+
+    function renderTable(rows) {
+      const tbody = document.querySelector('#table tbody');
+      tbody.innerHTML = '';
+      rows.forEach(r => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${r.timestamp}</td><td>${r.temperature}</td><td>${r.humidity}</td>`;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function download(type) {
+      window.location = `/download/${type}`;
+    }
+
+    function changeInterval() {
+      refreshInterval = parseInt(document.getElementById('intervalSelect').value);
+      if (timer) clearInterval(timer);
+      timer = setInterval(fetchAndRender, refreshInterval);
+    }
+
+    // Initialize chart + auto refresh
+    fetchAndRender();
+    timer = setInterval(fetchAndRender, refreshInterval);
+  </script>
+</body>
+</html>
